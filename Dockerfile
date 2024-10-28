@@ -2,6 +2,7 @@
 FROM golang:1.21 AS builder
 ARG TARGETOS
 ARG TARGETARCH
+ARG version="unknown"
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

@@ -49,7 +49,8 @@ const (
 // QueueReconciler reconciles a Queue object
 type QueueReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	Version string
 }
 
 //+kubebuilder:rbac:groups=orderly.io,resources=queues,verbs=get;list;watch;create;update;patch;delete
@@ -211,7 +212,7 @@ func (r *QueueReconciler) hash(obj any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return hash(by), nil
+	return fmt.Sprintf("%s:%s", r.Version, hash(by)), nil
 }
 
 func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deployment {

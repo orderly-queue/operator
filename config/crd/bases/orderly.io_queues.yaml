@@ -108,8 +108,7 @@ spec:
                   enabled:
                     type: boolean
                   type:
-                    enum:
-                    - s3
+                    pattern: (s3|.{0})
                     type: string
                 type: object
             required:

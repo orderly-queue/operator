@@ -50,7 +50,7 @@ type StorageSpec struct {
 	Enabled bool `json:"enabled"`
 	// +optional
 	// +default=s3
-	// +kubebuilder:validation:Enum=s3
+	// +kubebuilder:validation:Pattern="(s3|.{0})"
 	Type string `json:"type"`
 	// +optional
 	Config map[string]string `json:"config"`

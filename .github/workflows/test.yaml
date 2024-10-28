@@ -1,0 +1,50 @@
+name: Test
+
+on:
+  pull_request:
+
+env:
+  GOPRIVATE: github.com/orderly-engine
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - run: go mod download
+      - run: make test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          push: false
+          tags: ghcr.io/orderly-queue/operator:${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+
+  # chart:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       k8s_version:
+  #         - 1.29.5
+  #         - 1.30.0
+  #         - 1.30.1
+
+  #   steps:
+  #     - name: Check out the repo
+  #       uses: actions/checkout@v4
+  #     - uses: azure/setup-helm@v4
+  #     - run: helm template go-queue chart/ > templated.yaml
+  #     - uses: docker://ghcr.io/yannh/kubeconform:latest
+  #       with:
+  #         entrypoint: '/kubeconform'
+  #         args: '-summary -output json --kubernetes-version ${{ matrix.k8s_version }} templated.yaml'

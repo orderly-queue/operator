@@ -17,14 +17,20 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/brianvoe/gofakeit/v7"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +38,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	mydomainv1beta1 "github.com/orderly-queue/operator/api/v1beta1"
+	"github.com/orderly-queue/operator/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -42,6 +48,7 @@ import (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var _ = gofakeit.Seed(0)
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -72,7 +79,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = mydomainv1beta1.AddToScheme(scheme.Scheme)
+	err = v1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
@@ -81,6 +88,19 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	base := &corev1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "test-secrets",
+			Namespace: "default",
+		},
+		StringData: map[string]string{
+			"encryptionKey": "base64:32:eoN9P1NndyYjKoeIyoaKxmaVzYCz32ZEc9V0XmXlFM4=",
+			"jwtSecret":     "base64:Hznayfuih4eLnZjtNGiwauq0y999FhJWKA8zGwymaoQ",
+		},
+	}
+	err = k8sClient.Create(context.Background(), base)
+	Expect(err).To(BeNil())
+
 })
 
 var _ = AfterSuite(func() {
@@ -88,3 +108,34 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+func BaseQueue() *v1beta1.Queue {
+	return &v1beta1.Queue{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      strings.ToLower(fmt.Sprintf("%s-%s-%s", gofakeit.Word(), gofakeit.Word(), gofakeit.Word())),
+			Namespace: "default",
+		},
+		Spec: v1beta1.QueueSpec{
+			Snapshots: v1beta1.SnapshotSpec{
+				Enabled: false,
+			},
+			Resources: v1beta1.ResourcesSpec{
+				Limits: corev1.ResourceList{
+					"cpu":    resource.MustParse("1"),
+					"memory": resource.MustParse("24Mi"),
+				},
+			},
+			EncryptionKey: v1beta1.SecretRef{
+				SecretName: "test-secrets",
+				SecretKey:  "encryptionKey",
+			},
+			JwtSecret: v1beta1.SecretRef{
+				SecretName: "test-secrets",
+				SecretKey:  "jwtSecret",
+			},
+			Storage: v1beta1.StorageSpec{
+				Enabled: false,
+			},
+		},
+	}
+}

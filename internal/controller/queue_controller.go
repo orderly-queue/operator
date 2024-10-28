@@ -23,12 +23,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/orderly-queue/orderly/pkg/config"
 	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -95,7 +97,39 @@ func (r *QueueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return r.reconcileDeployment(ctx, queue, hash)
 	}
 
+	if queue.Status.IngressRevision != hash {
+		logger.Info("reconciling ingress")
+		return r.reconcileIngress(ctx, queue, hash)
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *QueueReconciler) reconcileIngress(ctx context.Context, queue v1beta1.Queue, rev string) (ctrl.Result, error) {
+	if queue.Spec.Ingress.Enabled {
+		// TODO: input validation
+		svc := r.buildService(queue)
+		if err := r.persistsService(ctx, svc); err != nil {
+			return ctrl.Result{}, fmt.Errorf("%w: failed to apply service", err)
+		}
+		ingress := r.buildIngress(queue)
+		if err := r.persistsIngress(ctx, ingress); err != nil {
+			return ctrl.Result{}, fmt.Errorf("%w: failed to apply ingress", err)
+		}
+	} else {
+		if err := r.deleteIngress(ctx, queue); err != nil && !kerrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("%w: failed to remove ingress", err)
+		}
+	}
+	queue.Status.IngressRevision = rev
+	queue.Status.Conditions = append(queue.Status.Conditions, metav1.Condition{
+		Type:               "Ingress",
+		Status:             metav1.ConditionTrue,
+		Reason:             "IngressUpdated",
+		Message:            "Ingress updated",
+		LastTransitionTime: metav1.Now(),
+	})
+	return ctrl.Result{}, r.Client.Status().Update(ctx, &queue)
 }
 
 func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queue) (ctrl.Result, error) {
@@ -105,7 +139,7 @@ func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queu
 			Namespace: queue.Namespace,
 		},
 	}
-	if err := r.Client.Delete(ctx, dep); !kerrors.IsNotFound(err) {
+	if err := r.Client.Delete(ctx, dep); err != nil && !kerrors.IsNotFound(err) {
 		return ctrl.Result{}, fmt.Errorf("%w: failed to delete deployment", err)
 	}
 
@@ -115,8 +149,12 @@ func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queu
 			Namespace: queue.Namespace,
 		},
 	}
-	if err := r.Client.Delete(ctx, config); !kerrors.IsNotFound(err) {
+	if err := r.Client.Delete(ctx, config); err != nil && !kerrors.IsNotFound(err) {
 		return ctrl.Result{}, fmt.Errorf("%w: failed to delete config", err)
+	}
+
+	if err := r.deleteIngress(ctx, queue); err != nil && !kerrors.IsNotFound(err) {
+		return ctrl.Result{}, fmt.Errorf("%w: failed to remove ingress", err)
 	}
 
 	ops := "["
@@ -207,12 +245,143 @@ func (r *QueueReconciler) reconcileConfig(ctx context.Context, queue v1beta1.Que
 	return ctrl.Result{}, r.Client.Status().Update(ctx, &queue)
 }
 
+func (r *QueueReconciler) deleteIngress(ctx context.Context, queue v1beta1.Queue) error {
+	svc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      queue.Name,
+			Namespace: queue.Namespace,
+		},
+	}
+	if err := r.Client.Delete(ctx, svc); err != nil && !kerrors.IsNotFound(err) {
+		return fmt.Errorf("%w: failed to delete service", err)
+	}
+
+	ing := &netv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      queue.Name,
+			Namespace: queue.Namespace,
+		},
+	}
+	if err := r.Client.Delete(ctx, ing); err != nil && !kerrors.IsNotFound(err) {
+		return fmt.Errorf("%w: failed to delete ingress", err)
+	}
+	return nil
+}
+
+func (r *QueueReconciler) persistsIngress(ctx context.Context, ing *netv1.Ingress) error {
+	err := r.Client.Get(ctx, types.NamespacedName{
+		Name:      ing.Name,
+		Namespace: ing.Namespace,
+	}, &netv1.Ingress{})
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("%w: could not get ingress", err)
+		}
+		return r.Client.Create(ctx, ing)
+	}
+	return r.Client.Update(ctx, ing)
+}
+
+func (r *QueueReconciler) buildIngress(queue v1beta1.Queue) *netv1.Ingress {
+	class := "nginx"
+	if queue.Spec.Ingress.IngressClass != "" {
+		class = queue.Spec.Ingress.IngressClass
+	}
+	pt := netv1.PathTypeImplementationSpecific
+	return &netv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      queue.Name,
+			Namespace: queue.Namespace,
+			Annotations: map[string]string{
+				"kubernetes.io/tls-acme": "true",
+			},
+		},
+		Spec: netv1.IngressSpec{
+			IngressClassName: &class,
+			TLS: []netv1.IngressTLS{
+				{
+					SecretName: fmt.Sprintf("%s-tls", strings.ReplaceAll(queue.Spec.Ingress.Host, ".", "-")),
+					Hosts:      []string{queue.Spec.Ingress.Host},
+				},
+			},
+			Rules: []netv1.IngressRule{
+				{
+					Host: queue.Spec.Ingress.Host,
+					IngressRuleValue: netv1.IngressRuleValue{
+						HTTP: &netv1.HTTPIngressRuleValue{
+							Paths: []netv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: &pt,
+									Backend: netv1.IngressBackend{
+										Service: &netv1.IngressServiceBackend{
+											Name: queue.Name,
+											Port: netv1.ServiceBackendPort{
+												Name: "http",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (r *QueueReconciler) persistsService(ctx context.Context, svc *v1.Service) error {
+	err := r.Client.Get(ctx, types.NamespacedName{
+		Name:      svc.Name,
+		Namespace: svc.Namespace,
+	}, &v1.Service{})
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			return fmt.Errorf("%w: failed to get service", err)
+		}
+		return r.Client.Create(ctx, svc)
+	}
+	return r.Client.Update(ctx, svc)
+}
+
+func (r *QueueReconciler) buildService(queue v1beta1.Queue) *v1.Service {
+	return &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      queue.Name,
+			Namespace: queue.Namespace,
+		},
+		Spec: v1.ServiceSpec{
+			Ports: []v1.ServicePort{
+				{
+					Name:       "http",
+					Port:       8765,
+					TargetPort: intstr.FromString("http"),
+				},
+				{
+					Name:       "metrics",
+					Port:       8766,
+					TargetPort: intstr.FromString("metrics"),
+				},
+			},
+			Selector: r.labels(queue),
+			Type:     v1.ServiceTypeClusterIP,
+		},
+	}
+}
+
 func (r *QueueReconciler) hash(obj any) (string, error) {
 	by, err := json.Marshal(obj)
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s:%s", r.Version, hash(by)), nil
+}
+
+func (r *QueueReconciler) labels(queue v1beta1.Queue) map[string]string {
+	return map[string]string{
+		"orderly.io/instance": queue.Name,
+	}
 }
 
 func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deployment {
@@ -233,18 +402,14 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 		Spec: appsv1.DeploymentSpec{
 			Replicas: replicas(1),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"orderly.io/instance": queue.Name,
-				},
+				MatchLabels: r.labels(queue),
 			},
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RecreateDeploymentStrategyType,
 			},
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"orderly.io/instance": queue.Name,
-					},
+					Labels: r.labels(queue),
 					OwnerReferences: []metav1.OwnerReference{
 						*metav1.NewControllerRef(&queue.ObjectMeta, schema.GroupVersionKind{
 							Group:   v1beta1.GroupVersion.Group,

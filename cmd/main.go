@@ -104,7 +104,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "f99f8afc.orderly.co",
+		LeaderElectionID:       "f99f8afc.orderly.io",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -126,7 +126,7 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Queue")
+		setupLog.Error(err, "unable to create controller", "controller", "queue")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

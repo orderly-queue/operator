@@ -18,14 +18,28 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
 
+	"github.com/orderly-queue/orderly/pkg/config"
+	"gopkg.in/yaml.v3"
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/orderly-queue/operator/api/v1beta1"
-	mydomainv1beta1 "github.com/orderly-queue/operator/api/v1beta1"
 )
 
 // QueueReconciler reconciles a Queue object
@@ -34,35 +48,390 @@ type QueueReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=orderly.co,resources=queues,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=orderly.co,resources=queues/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=orderly.co,resources=queues/finalizers,verbs=update
+//+kubebuilder:rbac:groups=orderly.io,resources=queues,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=orderly.io,resources=queues/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=orderly.io,resources=queues/finalizers,verbs=update
+//+kubebuilder:rbac:groups=v1,resources=secrets,verbs=list;get;create;delete;update
+//+kubebuilder:rbac:groups=apps/v1,resources=deployments,verbs=list;get;create;delete;update
+//+kubebuilder:rbac:groups=v1,resources=pods,verbs=list;get;create;delete;update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Queue object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.3/pkg/reconcile
 func (r *QueueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	var queue v1beta1.Queue
 	if err := r.Get(ctx, req.NamespacedName, &queue); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// TODO(user): your logic here
+	hash, err := r.hash(queue.Spec)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w: failed to hash queue spec", err)
+	}
+
+	logger.Info("reconciling queue", "revision", hash)
+
+	if queue.Status.ConfigRevision != hash {
+		logger.Info("reconciling config")
+		return r.reconcileConfig(ctx, queue, hash)
+	}
+
+	if queue.Status.DeploymentRevision != hash {
+		logger.Info("reocnciling deployment")
+		return r.reconcileDeployment(ctx, queue, hash)
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *QueueReconciler) reconcileDeployment(ctx context.Context, queue v1beta1.Queue, rev string) (ctrl.Result, error) {
+	deployment := r.buildDeployment(queue)
+
+	exists := true
+	err := r.Client.Get(ctx, types.NamespacedName{
+		Name:      deployment.Name,
+		Namespace: deployment.Namespace,
+	}, &appsv1.Deployment{})
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("%w: failed to get existing deployment", err)
+		}
+		exists = false
+	}
+
+	if exists {
+		if err := r.Client.Update(ctx, deployment); err != nil {
+			return ctrl.Result{}, fmt.Errorf("%w: failed to update deployment", err)
+		}
+	} else {
+		if err := r.Client.Create(ctx, deployment); err != nil {
+			return ctrl.Result{}, fmt.Errorf("%w: failed to create new deployment", err)
+		}
+	}
+
+	queue.Status.DeploymentRevision = rev
+	queue.Status.Conditions = append(queue.Status.Conditions, metav1.Condition{
+		Type:               "Deployment",
+		Status:             metav1.ConditionTrue,
+		Reason:             "DeploymentUpdated",
+		Message:            "Deployment updated",
+		LastTransitionTime: metav1.Now(),
+	})
+	return ctrl.Result{}, r.Client.Status().Update(ctx, &queue)
+}
+
+func (r *QueueReconciler) reconcileConfig(ctx context.Context, queue v1beta1.Queue, rev string) (ctrl.Result, error) {
+	encKey, err := r.getSecretValue(ctx, queue.Namespace, queue.Spec.EncryptionKey.SecretName, queue.Spec.EncryptionKey.SecretKey)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	jwtSecret, err := r.getSecretValue(ctx, queue.Namespace, queue.Spec.JwtSecret.SecretName, queue.Spec.JwtSecret.SecretKey)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	conf := r.defaultConfig()
+	conf.EncryptionKey = encKey
+	conf.JwtSecret = jwtSecret
+	if err := r.buildConfig(queue, conf); err != nil {
+		return ctrl.Result{}, err
+	}
+	conf.SetDefaults()
+
+	if err := r.persistConfig(ctx, queue, conf); err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w: failed to persist config", err)
+	}
+
+	if err := r.restartDeployment(ctx, queue); err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w: failed to restart deployment", err)
+	}
+
+	queue.Status.ConfigRevision = rev
+	queue.Status.Conditions = append(queue.Status.Conditions, metav1.Condition{
+		Type:               "Config",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ConfigUpdated",
+		Message:            "Config updated, queue restarted",
+		LastTransitionTime: metav1.Now(),
+	})
+
+	return ctrl.Result{}, r.Client.Status().Update(ctx, &queue)
+}
+
+func (r *QueueReconciler) hash(obj any) (string, error) {
+	by, err := json.Marshal(obj)
+	if err != nil {
+		return "", err
+	}
+	return hash(by), nil
+}
+
+func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deployment {
+	repo := queue.Spec.Image.Repository
+	if repo == "" {
+		repo = "ghcr.io/orderly-queue/orderly"
+	}
+	tag := queue.Spec.Image.Tag
+	if tag == "" {
+		tag = "latest"
+	}
+
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      queue.Name,
+			Namespace: queue.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: replicas(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"orderly.io/instance": queue.Name,
+				},
+			},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RecreateDeploymentStrategyType,
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"orderly.io/instance": queue.Name,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						*metav1.NewControllerRef(&queue.ObjectMeta, schema.GroupVersionKind{
+							Group:   v1beta1.GroupVersion.Group,
+							Version: v1beta1.GroupVersion.Version,
+							Kind:    "Queue",
+						}),
+					},
+				},
+				Spec: v1.PodSpec{
+					Volumes: []v1.Volume{
+						{
+							Name: "config",
+							VolumeSource: v1.VolumeSource{
+								Secret: &v1.SecretVolumeSource{
+									SecretName: r.configName(queue),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name:            "orderly",
+							Image:           fmt.Sprintf("%s:%s", repo, tag),
+							ImagePullPolicy: "IfNotPresent",
+							Args:            []string{"serve", "--config", "/config/config.yaml"},
+							Ports: []v1.ContainerPort{
+								{
+									Name:          "http",
+									ContainerPort: 8765,
+								},
+								{
+									Name:          "metrics",
+									ContainerPort: 8766,
+								},
+								{
+									Name:          "probes",
+									ContainerPort: 8767,
+								},
+							},
+							LivenessProbe: &v1.Probe{
+								InitialDelaySeconds: 30,
+								ProbeHandler: v1.ProbeHandler{
+									HTTPGet: &v1.HTTPGetAction{
+										Path: "/healthz",
+										Port: intstr.FromString("probes"),
+									},
+								},
+							},
+							ReadinessProbe: &v1.Probe{
+								InitialDelaySeconds: 30,
+								ProbeHandler: v1.ProbeHandler{
+									HTTPGet: &v1.HTTPGetAction{
+										Path: "/readyz",
+										Port: intstr.FromString("probes"),
+									},
+								},
+							},
+							VolumeMounts: []v1.VolumeMount{
+								{
+									Name:      "config",
+									ReadOnly:  true,
+									MountPath: "/config",
+								},
+							},
+							Resources: v1.ResourceRequirements{
+								Limits: queue.Spec.Resources.Limits,
+							},
+							Env: []v1.EnvVar{
+								{
+									Name: "GOMEMLIMIT",
+									ValueFrom: &v1.EnvVarSource{
+										ResourceFieldRef: &v1.ResourceFieldSelector{
+											Resource: "limits.memory",
+										},
+									},
+								},
+								{
+									Name: "GOMAXPROCS",
+									ValueFrom: &v1.EnvVarSource{
+										ResourceFieldRef: &v1.ResourceFieldSelector{
+											Resource: "limits.cpu",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func replicas(i int) *int32 {
+	ii := int32(i)
+	return &ii
+}
+
+func (r *QueueReconciler) persistConfig(ctx context.Context, queue v1beta1.Queue, conf *config.Config) error {
+	name := r.configName(queue)
+	marsh, err := yaml.Marshal(conf)
+	if err != nil {
+		return err
+	}
+
+	sec := &v1.Secret{}
+	err = r.Client.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: queue.Namespace,
+			Name:      name,
+		},
+		sec,
+	)
+	create := false
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			return err
+		}
+		create = true
+	}
+	sec.Name = name
+	sec.Namespace = queue.Namespace
+	sec.Data = map[string][]byte{
+		"config.yaml": marsh,
+	}
+
+	if create {
+		if err := r.Client.Create(ctx, sec); err != nil {
+			return fmt.Errorf("%w: failed to create config secret", err)
+		}
+	}
+	if err := r.Client.Update(ctx, sec); err != nil {
+		return fmt.Errorf("%w: failed to update config secret", err)
+	}
+	return nil
+}
+
+func (r *QueueReconciler) configName(queue v1beta1.Queue) string {
+	return fmt.Sprintf("%s-config", queue.Name)
+}
+
+func (r *QueueReconciler) buildConfig(queue v1beta1.Queue, conf *config.Config) error {
+	conf.Name = queue.Name
+	conf.Environment = "production"
+	conf.Telemetry.Metrics.Enabled = true
+	conf.LogLevel = "error"
+
+	if queue.Spec.Storage.Enabled {
+		stc := map[string]any{}
+		for key, val := range queue.Spec.Storage.Config {
+			if key == "insecrue" {
+				switch val {
+				case "true":
+					stc[key] = true
+				case "false":
+					stc[key] = false
+				default:
+					return errors.New("invalid storage config value insecure")
+				}
+				continue
+			}
+			stc[key] = val
+		}
+		conf.Storage = config.Storage{
+			Enabled: true,
+			Type:    queue.Spec.Storage.Type,
+			Config:  stc,
+		}
+	}
+	return nil
+}
+
+func (r *QueueReconciler) defaultConfig() *config.Config {
+	config := &config.Config{}
+	config.SetDefaults()
+	return config
+}
+
+func (r *QueueReconciler) getSecretValue(ctx context.Context, namespace string, name string, key string) (string, error) {
+	s := &v1.Secret{}
+	err := r.Client.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		},
+		s,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	pw, ok := s.Data[key]
+	if !ok {
+		return "", errors.New("could not find specified secret key")
+	}
+
+	return string(pw), nil
+}
+
+func (r *QueueReconciler) restartDeployment(ctx context.Context, queue v1beta1.Queue) error {
+	patch := &appsv1.Deployment{
+		Spec: appsv1.DeploymentSpec{
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339),
+					},
+				},
+			},
+		},
+	}
+	existing := &appsv1.Deployment{}
+	if err := r.Client.Get(ctx, types.NamespacedName{
+		Name:      queue.Name,
+		Namespace: queue.Namespace,
+	}, existing); err != nil {
+		return fmt.Errorf("%w: failed to get existing deployment", err)
+	}
+	return r.Client.Patch(ctx, existing, client.MergeFrom(patch))
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *QueueReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mydomainv1beta1.Queue{}).
+		For(&v1beta1.Queue{}).
 		Complete(r)
+}
+
+func hash(input []byte) string {
+	sh := sha256.New()
+	sh.Write(input)
+	return hex.EncodeToString(sh.Sum(nil))
 }

@@ -1,4 +1,12 @@
-apiVersion: orderly.co/v1beta1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: queue-sample-secrets
+stringData:
+  jwtSecret: base64:Hznayfuih4eLnZjtNGiwauq0y999FhJWKA8zGwymaoQ
+  encryptionKey: base64:32:eoN9P1NndyYjKoeIyoaKxmaVzYCz32ZEc9V0XmXlFM4=
+---
+apiVersion: orderly.io/v1beta1
 kind: Queue
 metadata:
   labels:
@@ -6,4 +14,18 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: queue-sample
 spec:
-  # TODO(user): Add fields here
+  encryptionKey:
+    secretName: queue-sample-secrets
+    secretKey: encryptionKey
+
+  jwtSecret:
+    secretName: queue-sample-secrets
+    secretKey: jwtSecret
+
+  snapshots:
+    enabled: false
+
+  resources:
+    limits:
+      cpu: 1
+      memory: 128Mi

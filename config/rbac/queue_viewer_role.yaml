@@ -8,7 +8,7 @@ metadata:
   name: queue-viewer-role
 rules:
 - apiGroups:
-  - orderly.co
+  - orderly.io
   resources:
   - queues
   verbs:
@@ -16,7 +16,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - orderly.co
+  - orderly.io
   resources:
   - queues/status
   verbs:

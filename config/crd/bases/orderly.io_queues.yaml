@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: queues.orderly.co
+  name: queues.orderly.io
 spec:
-  group: orderly.co
+  group: orderly.io
   names:
     kind: Queue
     listKind: QueueList
@@ -14,7 +14,17 @@ spec:
     singular: queue
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Config")].status
+      name: Config
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Deployment")].status
+      name: Deployment
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: Queue is the Schema for the queues API
@@ -39,6 +49,36 @@ spec:
           spec:
             description: QueueSpec defines the desired state of Queue
             properties:
+              encryptionKey:
+                properties:
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - secretKey
+                - secretName
+                type: object
+              image:
+                properties:
+                  repository:
+                    type: string
+                  tag:
+                    type: string
+                required:
+                - repository
+                - tag
+                type: object
+              jwtSecret:
+                properties:
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - secretKey
+                - secretName
+                type: object
               resources:
                 properties:
                   limits:
@@ -52,7 +92,29 @@ spec:
                       pairs.
                     type: object
                 type: object
+              snapshots:
+                properties:
+                  enabled:
+                    type: boolean
+                  schedule:
+                    type: string
+                type: object
+              storage:
+                properties:
+                  config:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  enabled:
+                    type: boolean
+                  type:
+                    enum:
+                    - s3
+                    type: string
+                type: object
             required:
+            - encryptionKey
+            - jwtSecret
             - resources
             type: object
           status:
@@ -127,6 +189,10 @@ spec:
                   - type
                   type: object
                 type: array
+              configRevision:
+                type: string
+              deploymentRevision:
+                type: string
             type: object
         type: object
     served: true

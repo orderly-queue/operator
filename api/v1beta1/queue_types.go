@@ -22,9 +22,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type SecretRef struct {
+	// +required
+	SecretName string `json:"secretName"`
+	// +required
+	SecretKey string `json:"secretKey"`
+}
+
 type ResourcesSpec struct {
 	// +required
-	Limit corev1.ResourceList `json:"limits,omitempty"`
+	Limits corev1.ResourceList `json:"limits,omitempty"`
 }
 
 type SnapshotSpec struct {
@@ -37,17 +44,50 @@ type SnapshotSpec struct {
 	Schedule string `json:"schedule"`
 }
 
+type StorageSpec struct {
+	// +optional
+	// +default=false
+	Enabled bool `json:"enabled"`
+	// +optional
+	// +default=s3
+	// +kubebuilder:validation:Enum=s3
+	Type string `json:"type"`
+	// +optional
+	Config map[string]string `json:"config"`
+}
+
+type ImageSpec struct {
+	// +default=ghcr.io/orderly-queue/orderly
+	Repository string `json:"repository"`
+	// +default=latest
+	Tag string `json:"tag"`
+}
+
 // QueueSpec defines the desired state of Queue
 type QueueSpec struct {
+	// +optional
+	Image ImageSpec `json:"image"`
 	// +required
 	Resources ResourcesSpec `json:"resources"`
 
-	// //+optional
-	// Snapshots SnapshotSpec `json:"snapshots"`
+	// +required
+	EncryptionKey SecretRef `json:"encryptionKey"`
+	// +required
+	JwtSecret SecretRef `json:"jwtSecret"`
+
+	// +optional
+	Snapshots SnapshotSpec `json:"snapshots"`
+
+	// +optional
+	Storage StorageSpec `json:"storage"`
 }
 
 // QueueStatus defines the observed state of Queue
 type QueueStatus struct {
+	// +optional
+	DeploymentRevision string `json:"deploymentRevision"`
+	// +optional
+	ConfigRevision string `json:"configRevision"`
 	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors={"urn:alm:descriptor:io.kubernetes.conditions"}
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -62,6 +102,9 @@ func (q *QueueStatus) SetCondition(condition metav1.Condition) {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Config",type="string",JSONPath=".status.conditions[?(@.type==\"Config\")].status"
+// +kubebuilder:printcolumn:name="Deployment",type="string",JSONPath=".status.conditions[?(@.type==\"Deployment\")].status"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Queue is the Schema for the queues API
 type Queue struct {

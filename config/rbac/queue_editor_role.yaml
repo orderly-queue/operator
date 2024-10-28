@@ -8,7 +8,7 @@ metadata:
   name: queue-editor-role
 rules:
 - apiGroups:
-  - my.domain
+  - orderly.co
   resources:
   - queues
   verbs:
@@ -20,7 +20,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - my.domain
+  - orderly.co
   resources:
   - queues/status
   verbs:

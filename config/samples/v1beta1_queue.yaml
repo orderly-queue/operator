@@ -1,4 +1,4 @@
-apiVersion: my.domain/v1beta1
+apiVersion: orderly.co/v1beta1
 kind: Queue
 metadata:
   labels:

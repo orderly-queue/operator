@@ -13,6 +13,8 @@ metadata:
     app.kubernetes.io/name: operator
     app.kubernetes.io/managed-by: kustomize
   name: queue-sample
+  finalizers:
+    - orderly.io/finalizer
 spec:
   encryptionKey:
     secretName: queue-sample-secrets

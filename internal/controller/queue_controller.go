@@ -42,6 +42,10 @@ import (
 	"github.com/orderly-queue/operator/api/v1beta1"
 )
 
+const (
+	fn = "orderly.io/finalizer"
+)
+
 // QueueReconciler reconciles a Queue object
 type QueueReconciler struct {
 	client.Client
@@ -73,6 +77,11 @@ func (r *QueueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, fmt.Errorf("%w: failed to hash queue spec", err)
 	}
 
+	if !queue.DeletionTimestamp.IsZero() {
+		logger.Info("deleting queue")
+		return r.handleDeletion(ctx, queue)
+	}
+
 	logger.Info("reconciling queue", "revision", hash)
 
 	if queue.Status.ConfigRevision != hash {
@@ -86,6 +95,41 @@ func (r *QueueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queue) (ctrl.Result, error) {
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      queue.Name,
+			Namespace: queue.Namespace,
+		},
+	}
+	if err := r.Client.Delete(ctx, dep); !kerrors.IsNotFound(err) {
+		return ctrl.Result{}, fmt.Errorf("%w: failed to delete deployment", err)
+	}
+
+	config := &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      r.configName(queue),
+			Namespace: queue.Namespace,
+		},
+	}
+	if err := r.Client.Delete(ctx, config); !kerrors.IsNotFound(err) {
+		return ctrl.Result{}, fmt.Errorf("%w: failed to delete config", err)
+	}
+
+	ops := "["
+	for i, f := range queue.GetFinalizers() {
+		if f == fn {
+			ops += fmt.Sprintf(`{"op": "remove", "path": "/metadata/finalizers/%d"}`, i)
+		}
+	}
+	ops += "]"
+	if len(ops) == 2 {
+		return ctrl.Result{}, nil
+	}
+
+	return ctrl.Result{}, r.Client.Patch(ctx, &queue, client.RawPatch(types.JSONPatchType, []byte(ops)))
 }
 
 func (r *QueueReconciler) reconcileDeployment(ctx context.Context, queue v1beta1.Queue, rev string) (ctrl.Result, error) {
@@ -418,6 +462,9 @@ func (r *QueueReconciler) restartDeployment(ctx context.Context, queue v1beta1.Q
 		Name:      queue.Name,
 		Namespace: queue.Namespace,
 	}, existing); err != nil {
+		if kerrors.IsNotFound(err) {
+			return nil
+		}
 		return fmt.Errorf("%w: failed to get existing deployment", err)
 	}
 	return r.Client.Patch(ctx, existing, client.MergeFrom(patch))

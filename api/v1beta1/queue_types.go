@@ -71,6 +71,9 @@ type IngressSpec struct {
 	// +optional
 	// +default="nginx"
 	IngressClass string `json:"ingressClass"`
+	// +optional
+	// +default=false
+	ExposeMetrics bool `json:"metrics"`
 }
 
 // QueueSpec defines the desired state of Queue

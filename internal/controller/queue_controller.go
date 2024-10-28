@@ -288,6 +288,35 @@ func (r *QueueReconciler) buildIngress(queue v1beta1.Queue) *netv1.Ingress {
 		class = queue.Spec.Ingress.IngressClass
 	}
 	pt := netv1.PathTypeImplementationSpecific
+
+	paths := []netv1.HTTPIngressPath{
+		{
+			Path:     "/",
+			PathType: &pt,
+			Backend: netv1.IngressBackend{
+				Service: &netv1.IngressServiceBackend{
+					Name: queue.Name,
+					Port: netv1.ServiceBackendPort{
+						Name: "http",
+					},
+				},
+			},
+		},
+	}
+	if queue.Spec.Ingress.ExposeMetrics {
+		paths = append(paths, netv1.HTTPIngressPath{
+			Path:     "/metrics",
+			PathType: &pt,
+			Backend: netv1.IngressBackend{
+				Service: &netv1.IngressServiceBackend{
+					Name: queue.Name,
+					Port: netv1.ServiceBackendPort{
+						Name: "metrics",
+					},
+				},
+			},
+		})
+	}
 	return &netv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      queue.Name,
@@ -309,20 +338,7 @@ func (r *QueueReconciler) buildIngress(queue v1beta1.Queue) *netv1.Ingress {
 					Host: queue.Spec.Ingress.Host,
 					IngressRuleValue: netv1.IngressRuleValue{
 						HTTP: &netv1.HTTPIngressRuleValue{
-							Paths: []netv1.HTTPIngressPath{
-								{
-									Path:     "/",
-									PathType: &pt,
-									Backend: netv1.IngressBackend{
-										Service: &netv1.IngressServiceBackend{
-											Name: queue.Name,
-											Port: netv1.ServiceBackendPort{
-												Name: "http",
-											},
-										},
-									},
-								},
-							},
+							Paths: paths,
 						},
 					},
 				},

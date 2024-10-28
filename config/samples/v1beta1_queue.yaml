@@ -30,6 +30,7 @@ spec:
   ingress:
     enabled: false
     host: queue.henrywhitaker.com
+    metrics: true
 
   resources:
     limits:

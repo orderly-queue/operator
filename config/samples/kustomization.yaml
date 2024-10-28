@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- v1beta1_queue.yaml
+- _v1beta1_queue.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

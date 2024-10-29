@@ -51,6 +51,22 @@ type SnapshotSpec struct {
 	Schedule string `json:"schedule"`
 }
 
+type S3Spec struct {
+	// +kubebuilder:validation:Required
+	Endpoint string `json:"endpoint"`
+	// +kubebuilder:validation:Required
+	Bucket string `json:"bucket"`
+	// +kubebuilder:validation:Required
+	Region string `json:"region"`
+	// +optional
+	// +default=false
+	Insecure bool `json:"insecure"`
+	// +kubebuilder:validation:Required
+	AccessKeyID SecretRef `json:"accessKeyId"`
+	// +kubebuilder:validation:Required
+	SecretAccessKey SecretRef `json:"secretAccessKey"`
+}
+
 type StorageSpec struct {
 	// +optional
 	// +default=false
@@ -59,8 +75,9 @@ type StorageSpec struct {
 	// +default=s3
 	// +kubebuilder:validation:Pattern="(s3|.{0})"
 	Type string `json:"type"`
+
 	// +optional
-	Config map[string]string `json:"config"`
+	S3 *S3Spec `json:"s3,omitempty"`
 }
 
 type ImageSpec struct {

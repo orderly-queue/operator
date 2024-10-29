@@ -237,7 +237,7 @@ func (r *QueueReconciler) reconcileConfig(ctx context.Context, queue v1beta1.Que
 	conf := r.defaultConfig()
 	conf.EncryptionKey = encKey
 	conf.JwtSecret = jwtSecret
-	if err := r.buildConfig(queue, conf); err != nil {
+	if err := r.buildConfig(ctx, queue, conf); err != nil {
 		return ctrl.Result{}, err
 	}
 	conf.SetDefaults()
@@ -607,32 +607,41 @@ func (r *QueueReconciler) configName(queue v1beta1.Queue) string {
 	return fmt.Sprintf("%s-config", queue.Name)
 }
 
-func (r *QueueReconciler) buildConfig(queue v1beta1.Queue, conf *config.Config) error {
+func (r *QueueReconciler) buildConfig(ctx context.Context, queue v1beta1.Queue, conf *config.Config) error {
 	conf.Name = queue.Name
 	conf.Environment = "production"
 	conf.Telemetry.Metrics.Enabled = true
 	conf.LogLevel = "error"
 
 	if queue.Spec.Storage.Enabled {
-		stc := map[string]any{}
-		for key, val := range queue.Spec.Storage.Config {
-			if key == "insecrue" {
-				switch val {
-				case "true":
-					stc[key] = true
-				case "false":
-					stc[key] = false
-				default:
-					return errors.New("invalid storage config value insecure")
-				}
-				continue
+		store := map[string]any{}
+		if queue.Spec.Storage.Type == "s3" {
+			if queue.Spec.Storage.S3 == nil {
+				return errors.New("s3 must be configured when")
 			}
-			stc[key] = val
+			s3 := *queue.Spec.Storage.S3
+
+			accessKey, err := r.getSecretValue(ctx, queue.Namespace, s3.AccessKeyID.SecretName, s3.AccessKeyID.SecretKey)
+			if err != nil {
+				return fmt.Errorf("failed to get s3 access key id from secret: %w", err)
+			}
+			secretKey, err := r.getSecretValue(ctx, queue.Namespace, s3.SecretAccessKey.SecretName, s3.SecretAccessKey.SecretKey)
+			if err != nil {
+				return fmt.Errorf("failed to get s3 secret access key from secret: %w", err)
+			}
+
+			store["endpoint"] = s3.Endpoint
+			store["bucket"] = s3.Bucket
+			store["region"] = s3.Region
+			store["insecure"] = s3.Insecure
+			store["access_key"] = accessKey
+			store["secret_key"] = secretKey
 		}
+
 		conf.Storage = config.Storage{
 			Enabled: true,
 			Type:    queue.Spec.Storage.Type,
-			Config:  stc,
+			Config:  store,
 		}
 	}
 	return nil

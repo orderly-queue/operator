@@ -31,8 +31,8 @@ controllerManager:
         drop:
         - ALL
     image:
-      repository: controller
-      tag: latest
+      repository: ghcr.io/orderly-queue/operator
+      tag: v1.0.0
     resources:
       limits:
         cpu: 500m

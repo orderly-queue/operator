@@ -53,7 +53,7 @@ spec:
         - /manager
         args:
         - --leader-elect
-        image: controller:latest
+        image: ghcr.io/orderly-queue/operator:v1.0.0
         name: manager
         securityContext:
           allowPrivilegeEscalation: false

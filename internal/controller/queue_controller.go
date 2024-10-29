@@ -60,9 +60,9 @@ type QueueReconciler struct {
 //+kubebuilder:rbac:groups=orderly.io,resources=queues,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=orderly.io,resources=queues/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=orderly.io,resources=queues/finalizers,verbs=update
-//+kubebuilder:rbac:groups=v1,resources=secrets,verbs=list;get;create;delete;update
-//+kubebuilder:rbac:groups=apps/v1,resources=deployments,verbs=list;get;create;delete;update
-//+kubebuilder:rbac:groups=v1,resources=pods,verbs=list;get;create;delete;update
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=list;get;create;delete;update
+//+kubebuilder:rbac:groups="",resources=pods,verbs=list;get;create;delete;update
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;get;create;delete;update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -124,7 +124,7 @@ func (r *QueueReconciler) reconcileIngress(ctx context.Context, queue v1beta1.Qu
 		}
 	}
 	queue.Status.IngressRevision = rev
-	queue.Status.Conditions = append(queue.Status.Conditions, metav1.Condition{
+	r.replaceStatus(&queue, metav1.Condition{
 		Type:               "Ingress",
 		Status:             metav1.ConditionTrue,
 		Reason:             "IngressUpdated",
@@ -132,6 +132,15 @@ func (r *QueueReconciler) reconcileIngress(ctx context.Context, queue v1beta1.Qu
 		LastTransitionTime: metav1.Now(),
 	})
 	return ctrl.Result{}, r.Client.Status().Update(ctx, &queue)
+}
+
+func (r *QueueReconciler) replaceStatus(queue *v1beta1.Queue, cond metav1.Condition) {
+	for i, c := range queue.Status.Conditions {
+		if c.Type == cond.Type {
+			queue.Status.Conditions[i] = cond
+			return
+		}
+	}
 }
 
 func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queue) (ctrl.Result, error) {
@@ -202,7 +211,7 @@ func (r *QueueReconciler) reconcileDeployment(ctx context.Context, queue v1beta1
 	}
 
 	queue.Status.DeploymentRevision = rev
-	queue.Status.Conditions = append(queue.Status.Conditions, metav1.Condition{
+	r.replaceStatus(&queue, metav1.Condition{
 		Type:               "Deployment",
 		Status:             metav1.ConditionTrue,
 		Reason:             "DeploymentUpdated",
@@ -239,7 +248,7 @@ func (r *QueueReconciler) reconcileConfig(ctx context.Context, queue v1beta1.Que
 	}
 
 	queue.Status.ConfigRevision = rev
-	queue.Status.Conditions = append(queue.Status.Conditions, metav1.Condition{
+	r.replaceStatus(&queue, metav1.Condition{
 		Type:               "Config",
 		Status:             metav1.ConditionTrue,
 		Reason:             "ConfigUpdated",

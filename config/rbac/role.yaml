@@ -14,6 +14,7 @@ rules:
   - get
   - list
   - update
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -24,6 +25,7 @@ rules:
   - get
   - list
   - update
+  - watch
 - apiGroups:
   - apps
   resources:
@@ -34,6 +36,7 @@ rules:
   - get
   - list
   - update
+  - watch
 - apiGroups:
   - orderly.io
   resources:

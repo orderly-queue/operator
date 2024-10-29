@@ -111,6 +111,8 @@ spec:
                 properties:
                   enabled:
                     type: boolean
+                  retentionDays:
+                    type: integer
                   schedule:
                     type: string
                 type: object

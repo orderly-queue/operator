@@ -32,7 +32,7 @@ controllerManager:
           - ALL
     image:
       repository: ghcr.io/orderly-queue/operator
-      tag: v1.0.5
+      tag: v1.0.6
     resources:
       limits:
         cpu: 500m

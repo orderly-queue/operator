@@ -112,17 +112,52 @@ spec:
                 properties:
                   enabled:
                     type: boolean
+                  retentionDays:
+                    type: integer
                   schedule:
                     type: string
                 type: object
               storage:
                 properties:
-                  config:
-                    additionalProperties:
-                      type: string
-                    type: object
                   enabled:
                     type: boolean
+                  s3:
+                    properties:
+                      accessKeyId:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        required:
+                        - secretKey
+                        - secretName
+                        type: object
+                      bucket:
+                        type: string
+                      endpoint:
+                        type: string
+                      insecure:
+                        type: boolean
+                      region:
+                        type: string
+                      secretAccessKey:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        required:
+                        - secretKey
+                        - secretName
+                        type: object
+                    required:
+                    - accessKeyId
+                    - bucket
+                    - endpoint
+                    - region
+                    - secretAccessKey
+                    type: object
                   type:
                     pattern: (s3|.{0})
                     type: string

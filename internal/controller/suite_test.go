@@ -29,7 +29,6 @@ import (
 
 	"github.com/brianvoe/gofakeit/v7"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -120,9 +119,9 @@ func BaseQueue() *v1beta1.Queue {
 				Enabled: false,
 			},
 			Resources: v1beta1.ResourcesSpec{
-				Limits: corev1.ResourceList{
-					"cpu":    resource.MustParse("1"),
-					"memory": resource.MustParse("24Mi"),
+				Limits: v1beta1.LimitsSpec{
+					CPU:    1,
+					Memory: "24Mi",
 				},
 			},
 			EncryptionKey: v1beta1.SecretRef{

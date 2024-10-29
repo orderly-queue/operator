@@ -17,7 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -29,9 +28,17 @@ type SecretRef struct {
 	SecretKey string `json:"secretKey"`
 }
 
+type LimitsSpec struct {
+	// +required
+	CPU int `json:"cpu"`
+	// +required
+	// +kubebuilder:validation:Pattern="[0-9]+Mi"
+	Memory string `json:"memory"`
+}
+
 type ResourcesSpec struct {
 	// +required
-	Limits corev1.ResourceList `json:"limits,omitempty"`
+	Limits LimitsSpec `json:"limits,omitempty"`
 }
 
 type SnapshotSpec struct {

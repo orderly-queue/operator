@@ -32,6 +32,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -173,10 +174,13 @@ func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queu
 }
 
 func (r *QueueReconciler) reconcileDeployment(ctx context.Context, queue v1beta1.Queue, rev string) (ctrl.Result, error) {
-	deployment := r.buildDeployment(queue)
+	deployment, err := r.buildDeployment(queue)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	exists := true
-	err := r.Client.Get(ctx, types.NamespacedName{
+	err = r.Client.Get(ctx, types.NamespacedName{
 		Name:      deployment.Name,
 		Namespace: deployment.Namespace,
 	}, &appsv1.Deployment{})
@@ -405,7 +409,7 @@ func (r *QueueReconciler) labels(queue v1beta1.Queue) map[string]string {
 	}
 }
 
-func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deployment {
+func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) (*appsv1.Deployment, error) {
 	repo := queue.Spec.Image.Repository
 	if repo == "" {
 		repo = "ghcr.io/orderly-queue/orderly"
@@ -415,6 +419,22 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 	if tag == "" {
 		tag = "latest"
 		pullPolicy = v1.PullAlways
+	}
+
+	cpuLimt, err := resource.ParseQuantity(fmt.Sprintf("%d", queue.Spec.Resources.Limits.CPU))
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to parse cpu limits", err)
+	}
+	memLimit, err := resource.ParseQuantity(queue.Spec.Resources.Limits.Memory)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to parse memory limits", err)
+	}
+
+	resources := &v1.ResourceRequirements{
+		Limits: v1.ResourceList{
+			v1.ResourceCPU:    cpuLimt,
+			v1.ResourceMemory: memLimit,
+		},
 	}
 
 	dep := &appsv1.Deployment{
@@ -496,9 +516,7 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 									MountPath: "/config",
 								},
 							},
-							Resources: v1.ResourceRequirements{
-								Limits: queue.Spec.Resources.Limits,
-							},
+							Resources: *resources,
 							Env: []v1.EnvVar{
 								{
 									Name: "GOMEMLIMIT",
@@ -524,7 +542,7 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 		},
 	}
 	controllerutil.SetOwnerReference(&queue, dep, r.Scheme)
-	return dep
+	return dep, nil
 }
 
 func replicas(i int) *int32 {

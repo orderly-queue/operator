@@ -143,6 +143,7 @@ func (r *QueueReconciler) replaceStatus(queue *v1beta1.Queue, cond metav1.Condit
 			return
 		}
 	}
+	queue.Status.Conditions = append(queue.Status.Conditions, cond)
 }
 
 func (r *QueueReconciler) handleDeletion(ctx context.Context, queue v1beta1.Queue) (ctrl.Result, error) {

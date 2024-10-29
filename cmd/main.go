@@ -40,9 +40,9 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
-	version  = "dev"
+	scheme          = runtime.NewScheme()
+	version  string = "dev"
+	setupLog        = ctrl.Log.WithName("setup").WithValues("version", version)
 )
 
 func init() {

@@ -94,6 +94,9 @@ spec:
                 - secretKey
                 - secretName
                 type: object
+              logLevel:
+                pattern: debug|info|error
+                type: string
               resources:
                 properties:
                   limits:

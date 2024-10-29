@@ -111,6 +111,11 @@ type QueueSpec struct {
 	// +required
 	Resources ResourcesSpec `json:"resources"`
 
+	// +optional
+	// +default=error
+	// +kubebuilder:validation:Pattern="debug|info|error"
+	LogLevel string `json:"logLevel"`
+
 	// +required
 	EncryptionKey SecretRef `json:"encryptionKey"`
 	// +required

@@ -611,7 +611,11 @@ func (r *QueueReconciler) buildConfig(ctx context.Context, queue v1beta1.Queue, 
 	conf.Name = queue.Name
 	conf.Environment = "production"
 	conf.Telemetry.Metrics.Enabled = true
-	conf.LogLevel = "error"
+	logLevel := queue.Spec.LogLevel
+	if logLevel == "" {
+		logLevel = "error"
+	}
+	conf.LogLevel = config.LogLevel(logLevel)
 
 	if queue.Spec.Storage.Enabled {
 		store := map[string]any{}

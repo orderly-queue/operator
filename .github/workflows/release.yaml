@@ -22,7 +22,7 @@ jobs:
           cmd: ci-bump yaml --patch '.version' --set '.appVersion=${{ github.ref_name }}' chart/Chart.yaml
       - uses: henrywhitaker3/ci-bump@main
         with:
-          cmd: ci-bump yaml --set '.controllerManager.manager.tag=${{ github.ref_name }}' chart/values.yaml
+          cmd: ci-bump yaml --set '.controllerManager.manager.image.tag=${{ github.ref_name }}' chart/values.yaml
 
       - name: Create Pull Request
         id: pr

@@ -49,6 +49,10 @@ type SnapshotSpec struct {
 	// +optional
 	// +default="0 * * * *"
 	Schedule string `json:"schedule"`
+
+	// +optional
+	// +default="7"
+	RetentionDays int `json:"retentionDays"`
 }
 
 type S3Spec struct {

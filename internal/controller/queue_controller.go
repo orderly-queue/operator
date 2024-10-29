@@ -644,6 +644,21 @@ func (r *QueueReconciler) buildConfig(ctx context.Context, queue v1beta1.Queue, 
 			Config:  store,
 		}
 	}
+
+	if queue.Spec.Snapshots.Enabled {
+		conf.Queue.Snapshot.Enabled = true
+		schedule := queue.Spec.Snapshots.Schedule
+		if schedule == "" {
+			schedule = "0 * * * *"
+		}
+		conf.Queue.Snapshot.Schedule = schedule
+		retention := queue.Spec.Snapshots.RetentionDays
+		if retention == 0 {
+			retention = 7
+		}
+		conf.Queue.Snapshot.RetentionDays = uint(retention)
+	}
+
 	return nil
 }
 

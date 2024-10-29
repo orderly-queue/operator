@@ -473,7 +473,6 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 								},
 							},
 							LivenessProbe: &v1.Probe{
-								InitialDelaySeconds: 30,
 								ProbeHandler: v1.ProbeHandler{
 									HTTPGet: &v1.HTTPGetAction{
 										Path: "/healthz",
@@ -482,7 +481,7 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 								},
 							},
 							ReadinessProbe: &v1.Probe{
-								InitialDelaySeconds: 30,
+								FailureThreshold: 10,
 								ProbeHandler: v1.ProbeHandler{
 									HTTPGet: &v1.HTTPGetAction{
 										Path: "/readyz",

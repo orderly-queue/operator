@@ -250,6 +250,9 @@ func (r *QueueReconciler) reconcileConfig(ctx context.Context, queue v1beta1.Que
 		return ctrl.Result{}, fmt.Errorf("%w: failed to restart deployment", err)
 	}
 
+	// Just sleep so we can wait for the deployment controller to pick the change up
+	time.Sleep(time.Second)
+
 	queue.Status.ConfigRevision = rev
 	r.replaceStatus(&queue, metav1.Condition{
 		Type:               "Config",

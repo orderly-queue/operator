@@ -39,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/orderly-queue/operator/api/v1beta1"
@@ -317,7 +318,7 @@ func (r *QueueReconciler) buildIngress(queue v1beta1.Queue) *netv1.Ingress {
 			},
 		})
 	}
-	return &netv1.Ingress{
+	ing := &netv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      queue.Name,
 			Namespace: queue.Namespace,
@@ -345,6 +346,8 @@ func (r *QueueReconciler) buildIngress(queue v1beta1.Queue) *netv1.Ingress {
 			},
 		},
 	}
+	controllerutil.SetOwnerReference(&queue, ing, r.Scheme)
+	return ing
 }
 
 func (r *QueueReconciler) persistsService(ctx context.Context, svc *v1.Service) error {
@@ -362,7 +365,7 @@ func (r *QueueReconciler) persistsService(ctx context.Context, svc *v1.Service) 
 }
 
 func (r *QueueReconciler) buildService(queue v1beta1.Queue) *v1.Service {
-	return &v1.Service{
+	svc := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      queue.Name,
 			Namespace: queue.Namespace,
@@ -384,6 +387,8 @@ func (r *QueueReconciler) buildService(queue v1beta1.Queue) *v1.Service {
 			Type:     v1.ServiceTypeClusterIP,
 		},
 	}
+	controllerutil.SetOwnerReference(&queue, svc, r.Scheme)
+	return svc
 }
 
 func (r *QueueReconciler) hash(obj any) (string, error) {
@@ -406,11 +411,13 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 		repo = "ghcr.io/orderly-queue/orderly"
 	}
 	tag := queue.Spec.Image.Tag
+	pullPolicy := v1.PullIfNotPresent
 	if tag == "" {
 		tag = "latest"
+		pullPolicy = v1.PullAlways
 	}
 
-	return &appsv1.Deployment{
+	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      queue.Name,
 			Namespace: queue.Namespace,
@@ -449,7 +456,7 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 						{
 							Name:            "orderly",
 							Image:           fmt.Sprintf("%s:%s", repo, tag),
-							ImagePullPolicy: "IfNotPresent",
+							ImagePullPolicy: v1.PullPolicy(pullPolicy),
 							Args:            []string{"serve", "--config", "/config/config.yaml"},
 							Ports: []v1.ContainerPort{
 								{
@@ -517,6 +524,8 @@ func (r *QueueReconciler) buildDeployment(queue v1beta1.Queue) *appsv1.Deploymen
 			},
 		},
 	}
+	controllerutil.SetOwnerReference(&queue, dep, r.Scheme)
+	return dep
 }
 
 func replicas(i int) *int32 {
@@ -552,6 +561,7 @@ func (r *QueueReconciler) persistConfig(ctx context.Context, queue v1beta1.Queue
 	sec.Data = map[string][]byte{
 		"config.yaml": marsh,
 	}
+	controllerutil.SetOwnerReference(&queue, sec, r.Scheme)
 
 	if create {
 		if err := r.Client.Create(ctx, sec); err != nil {

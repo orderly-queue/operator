@@ -16,6 +16,10 @@ metadata:
   finalizers:
     - orderly.io/finalizer
 spec:
+  image:
+    repository: ghcr.io/orderly-queue/orderly
+    tag: v1.0.4
+    
   encryptionKey:
     secretName: queue-sample-secrets
     secretKey: encryptionKey
@@ -28,8 +32,9 @@ spec:
     enabled: false
 
   ingress:
-    enabled: false
-    host: queue.henrywhitaker.com
+    enabled: true
+    host: orderly.henrywhitaker.com
+    ingressClass: internal
     metrics: true
 
   resources:

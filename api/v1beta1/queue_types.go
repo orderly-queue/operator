@@ -50,7 +50,7 @@ type StorageSpec struct {
 	Enabled bool `json:"enabled"`
 	// +optional
 	// +default=s3
-	// +kubebuilder:validation:Enum=s3
+	// +kubebuilder:validation:Pattern="(s3|.{0})"
 	Type string `json:"type"`
 	// +optional
 	Config map[string]string `json:"config"`
@@ -61,6 +61,19 @@ type ImageSpec struct {
 	Repository string `json:"repository"`
 	// +default=latest
 	Tag string `json:"tag"`
+}
+
+type IngressSpec struct {
+	// +optional
+	Enabled bool `json:"enabled"`
+	// +optional
+	Host string `json:"host"`
+	// +optional
+	// +default="nginx"
+	IngressClass string `json:"ingressClass"`
+	// +optional
+	// +default=false
+	ExposeMetrics bool `json:"metrics"`
 }
 
 // QueueSpec defines the desired state of Queue
@@ -80,6 +93,9 @@ type QueueSpec struct {
 
 	// +optional
 	Storage StorageSpec `json:"storage"`
+
+	// +optional
+	Ingress IngressSpec `json:"ingress"`
 }
 
 // QueueStatus defines the observed state of Queue
@@ -88,6 +104,8 @@ type QueueStatus struct {
 	DeploymentRevision string `json:"deploymentRevision"`
 	// +optional
 	ConfigRevision string `json:"configRevision"`
+	// +optional
+	IngressRevision string `json:"ingressRevision"`
 	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors={"urn:alm:descriptor:io.kubernetes.conditions"}
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -104,6 +122,7 @@ func (q *QueueStatus) SetCondition(condition metav1.Condition) {
 //+kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Config",type="string",JSONPath=".status.conditions[?(@.type==\"Config\")].status"
 // +kubebuilder:printcolumn:name="Deployment",type="string",JSONPath=".status.conditions[?(@.type==\"Deployment\")].status"
+// +kubebuilder:printcolumn:name="Ingress",type="string",JSONPath=".status.conditions[?(@.type==\"Ingress\")].status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Queue is the Schema for the queues API

@@ -21,6 +21,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Deployment")].status
       name: Deployment
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Ingress")].status
+      name: Ingress
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -69,6 +72,17 @@ spec:
                 - repository
                 - tag
                 type: object
+              ingress:
+                properties:
+                  enabled:
+                    type: boolean
+                  host:
+                    type: string
+                  ingressClass:
+                    type: string
+                  metrics:
+                    type: boolean
+                type: object
               jwtSecret:
                 properties:
                   secretKey:
@@ -108,8 +122,7 @@ spec:
                   enabled:
                     type: boolean
                   type:
-                    enum:
-                    - s3
+                    pattern: (s3|.{0})
                     type: string
                 type: object
             required:
@@ -192,6 +205,8 @@ spec:
               configRevision:
                 type: string
               deploymentRevision:
+                type: string
+              ingressRevision:
                 type: string
             type: object
         type: object

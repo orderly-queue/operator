@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: henrywhitaker3/ci-bump@main
+        with:
+          cmd: ci-bump yaml --patch '.version' --set '.appVersion=${{ github.ref_name }}' chart/Chart.yaml
+
+      - name: Create Pull Request
+        id: pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chart/${{ github.ref_name }}
+          commit-message: "chore(chart): update version to ${{ github.ref_name }}"
+          labels: automerge
+      - name: Merge Pull Request
+        uses: "pascalgn/automerge-action@v0.16.4"
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          PULL_REQUEST: ${{ steps.pr.outputs.pull-request-number }}
+          MERGE_RETRIES: 10
+          MERGE_RETRY_SLEEP: 30000
+
+      - name: Get chart version
+        run: |
+          CHART_VERSION=$(cat chart/Chart.yaml | grep -Eo "[0-9]+\.[0-9]+\.[0-9]+$")
+          echo "CHART_VERSION=${CHART_VERSION}" >> $GITHUB_ENV
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push chart
+        uses: appany/helm-oci-chart-releaser@v0.4.2
+        with:
+          name: orderly-operator
+          repository: orderly-queue
+          tag: "v${{ env.CHART_VERSION }}"
+          path: chart
+          registry: ghcr.io
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+          update_dependencies: 'true'
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: |
+            ghcr.io/orderly-queue/operator:latest
+            ghcr.io/orderly-queue/operator:${{ github.ref_name }}
+          build-args: |
+            VERSION=${{ github.ref_name }}

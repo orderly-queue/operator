@@ -86,8 +86,8 @@ github.com/onsi/ginkgo/v2 v2.20.1 h1:YlVIbqct+ZmnEph770q9Q7NVAz4wwIiVNahee6JyUzo
 github.com/onsi/ginkgo/v2 v2.20.1/go.mod h1:lG9ey2Z29hR41WMVthyJBGUBcBhGOtoPF2VFMvBXFCI=
 github.com/onsi/gomega v1.34.2 h1:pNCwDkzrsv7MS9kpaQvVb1aVLahQXyJ/Tv5oAZMI3i8=
 github.com/onsi/gomega v1.34.2/go.mod h1:v1xfxRgk0KIsG+QOdm7p8UosrOzPYRo60fd3B/1Dukc=
-github.com/orderly-queue/orderly v1.1.0 h1:N2/4YOi+CG9mQeKu/ZSY07Vy1Z4YdAGRnkBQyEmoMVU=
-github.com/orderly-queue/orderly v1.1.0/go.mod h1:Y8ahAJFdO0EmSwxLhR7CT/QCU7FjZCtE1w1LAWhOdig=
+github.com/orderly-queue/orderly v1.2.0 h1:e3xUHpoePvKEXgPQV3VUGl6oRqEXhaRxWU6Vc355DmQ=
+github.com/orderly-queue/orderly v1.2.0/go.mod h1:Y8ahAJFdO0EmSwxLhR7CT/QCU7FjZCtE1w1LAWhOdig=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

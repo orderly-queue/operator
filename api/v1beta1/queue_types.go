@@ -53,6 +53,10 @@ type SnapshotSpec struct {
 	// +optional
 	// +default="7"
 	RetentionDays int `json:"retentionDays"`
+
+	// +optional
+	// +default=true
+	NamePrefix *bool `json:"namePrefix"`
 }
 
 type S3Spec struct {

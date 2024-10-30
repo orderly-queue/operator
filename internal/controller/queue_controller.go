@@ -664,6 +664,13 @@ func (r *QueueReconciler) buildConfig(ctx context.Context, queue v1beta1.Queue, 
 			retention = 7
 		}
 		conf.Queue.Snapshot.RetentionDays = uint(retention)
+		prefix := true
+		if queue.Spec.Snapshots.NamePrefix != nil {
+			prefix = *queue.Spec.Snapshots.NamePrefix
+		}
+		if prefix {
+			conf.Queue.Snapshot.NamePrefix = queue.Name
+		}
 	}
 
 	return nil

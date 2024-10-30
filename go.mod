@@ -6,7 +6,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.1.1
 	github.com/onsi/ginkgo/v2 v2.20.1
 	github.com/onsi/gomega v1.34.2
-	github.com/orderly-queue/orderly v1.1.0
+	github.com/orderly-queue/orderly v1.2.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.31.2
 	k8s.io/apimachinery v0.31.2

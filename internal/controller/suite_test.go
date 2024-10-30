@@ -115,6 +115,7 @@ func BaseQueue() *v1beta1.Queue {
 			Namespace: "default",
 		},
 		Spec: v1beta1.QueueSpec{
+			LogLevel: "debug",
 			Snapshots: v1beta1.SnapshotSpec{
 				Enabled: false,
 			},

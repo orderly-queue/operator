@@ -115,6 +115,8 @@ spec:
                 properties:
                   enabled:
                     type: boolean
+                  namePrefix:
+                    type: boolean
                   retentionDays:
                     type: integer
                   schedule:
